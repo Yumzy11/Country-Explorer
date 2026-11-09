@@ -21,11 +21,15 @@ class CountryAPIClient:
         if not re.match(r"^[A-Za-z ]+$", name):
             return None, "Invalid country name. Use letters only."
         try:
-            url = f"https://restcountries.com/v3.1/name/{name}?fullText=true"
+                        url = f"https://restcountries.com/v3.1/name/{name}"
             response = requests.get(url, timeout=10)
             if response.status_code == 404:
                 return None, f"Country '{name}' not found."
-            data = response.json()[0]
+                        data = response.json()
+            if isinstance(data, dict):
+                return None, f"Country '{name}' not found."
+            if isinstance(data, list):
+                data = data[0]
             return Country(data), "Success"
         except requests.exceptions.RequestException as e:
             return None, f"API failed: {e}"
