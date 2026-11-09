@@ -1,47 +1,59 @@
 import re
 import requests
 
+# Free, no-key source - same data as old REST Countries
+DATA_URL = "https://raw.githubusercontent.com/mledoze/countries/master/countries.json"
+
 class Country:
     def __init__(self, data):
-        try:
-            self.name = data.get("name", {}).get("common", "N/A")
-            self.code = data.get("cca2", "N/A")
-            cap = data.get("capital", ["N/A"])
-            self.capital = cap[0] if cap else "N/A"
-            self.population = data.get("population", 0)
-            self.region = data.get("region", "N/A")
-            curr = data.get("currencies", {})
-            if curr:
-                first = list(curr.values())[0]
-                self.currency = first.get("name", "N/A")
-            else:
-                self.currency = "N/A"
-            langs = data.get("languages", {})
-            self.languages = ", ".join(langs.values()) if langs else "N/A"
-            self.timezones = data.get("timezones", ["N/A"])
-            self.area = data.get("area", 0)
-            flags = data.get("flags", {})
-            self.flag = flags.get("png", "")
-        except Exception as e:
-            raise Exception(f"Country parse failed: {e} | data keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+        self.name = data.get("name", {}).get("common", "N/A")
+        self.code = data.get("cca2", "N/A")
+        cap = data.get("capital", ["N/A"])
+        self.capital = cap[0] if cap else "N/A"
+        self.population = data.get("population", 0)
+        self.region = data.get("region", "N/A")
+        curr = data.get("currencies", {})
+        if curr:
+            first = list(curr.values())[0]
+            self.currency = first.get("name", "N/A")
+        else:
+            self.currency = "N/A"
+        langs = data.get("languages", {})
+        self.languages = ", ".join(langs.values()) if langs else "N/A"
+        self.timezones = data.get("timezones", ["N/A"])
+        self.area = data.get("area", 0)
+        # Flag from flagcdn using country code, e.g. ng -> Nigeria flag
+        code_lower = self.code.lower() if self.code != "N/A" else "xx"
+        self.flag = f"https://flagcdn.com/w320/{code_lower}.png"
 
 class CountryAPIClient:
+    def __init__(self):
+        self._cache = None
+
+    def _load(self):
+        if self._cache is None:
+            r = requests.get(DATA_URL, timeout=20)
+            r.raise_for_status()
+            self._cache = r.json()
+        return self._cache
+
     def get_country(self, name):
         if not re.match(r"^[A-Za-z ]+$", name):
             return None, "Invalid country name. Use letters only."
         try:
-            url = f"https://restcountries.com/v3.1/name/{name}?fields=name,cca2,capital,population,region,currencies,languages,timezones,area,flags"
-            response = requests.get(url, timeout=15)
-            if response.status_code != 200:
-                return None, f"Country '{name}' not found. Status: {response.status_code}"
-            data = response.json()
-            if isinstance(data, dict):
-                return None, f"API returned: {data}"
-            if isinstance(data, list) and len(data) > 0:
-                data = data[0]
-            else:
-                return None, "No data returned from API"
-            return Country(data), "Success"
+            all_countries = self._load()
+            search = name.strip().lower()
+            for c in all_countries:
+                common = c.get("name", {}).get("common", "").lower()
+                official = c.get("name", {}).get("official", "").lower()
+                if common == search or official == search:
+                    return Country(c), "Success"
+            # Partial match if exact not found
+            for c in all_countries:
+                common = c.get("name", {}).get("common", "").lower()
+                if search in common:
+                    return Country(c), "Success"
+            return None, f"Country '{name}' not found."
         except requests.exceptions.RequestException as e:
             return None, f"API failed: {e}"
         except Exception as e:
